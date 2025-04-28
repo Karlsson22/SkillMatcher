@@ -8,24 +8,21 @@ __pycache__/
 *.pyo
 *.pyd
 
-# VSCode settings
+
 .vscode/
-
-# MacOS
 .DS_Store
-
 # Environment files
 .env
-
-# Log files
 *.log
-
 # Build output
 build/
 dist/
-
-# OS generated files
 Thumbs.db
-
-# Jupyter Notebook checkpoints
 .ipynb_checkpoints/ 
+.Edgar.txt
+.jobs.json
+scraper/jobs.json
+createdFiles.lst
+inputFiles.lst
+*.class
+backend/target/
