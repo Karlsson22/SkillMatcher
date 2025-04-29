@@ -49,13 +49,25 @@ class JobScraper:
                             job_page.goto(job_url)
                             time.sleep(2)  # Let the page load
                             
+                            # Save the HTML of the first job page for debugging
+                            if len(self.jobs) == 0:
+                                with open("debug_job_page.html", "w", encoding="utf-8") as f:
+                                    f.write(job_page.content())
+                                print("Saved job page HTML to debug_job_page.html")
+                            
                             # Get the upload date
-                            upload_date_elem = job_page.query_selector("div:has-text('Publicerad')")
-                            upload_date = upload_date_elem.inner_text().replace("Publicerad", "").strip() if upload_date_elem else "N/A"
+                            upload_date_elem = job_page.query_selector("div.c-jalXcY.c-jalXcY-jroWjL-align-center.c-jalXcY-cxMxEp-gap-2:nth-child(2) span.c-fbRPId.c-fbRPId-fkodZJ-size-3.c-fbRPId-eqqxgc-weight-bold")
+                            if upload_date_elem:
+                                upload_date = upload_date_elem.inner_text().strip()
+                            else:
+                                upload_date = "N/A"
                             
                             # Get the deadline
-                            deadline_elem = job_page.query_selector("div:has-text('Ansök senast')")
-                            deadline = deadline_elem.inner_text().replace("Ansök senast", "").strip() if deadline_elem else "N/A"
+                            deadline_elem = job_page.query_selector("div.c-jalXcY.c-jalXcY-jroWjL-align-center.c-jalXcY-cxMxEp-gap-2:nth-child(3) span.c-fbRPId.c-fbRPId-fkodZJ-size-3.c-fbRPId-eqqxgc-weight-bold")
+                            if deadline_elem:
+                                deadline = deadline_elem.inner_text().strip()
+                            else:
+                                deadline = "N/A"
                             
                             # Get the job description (all text under 'Om jobbet')
                             desc_heading = job_page.query_selector("text=Om jobbet")
