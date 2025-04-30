@@ -5,6 +5,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
 import JobList from './pages/JobList';
+import JobSearch from './components/JobSearch';
 
 const theme = createTheme({
   palette: {
@@ -27,6 +28,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/jobs" element={<JobList />} />
+          <Route path="/search" element={<JobSearch />} />
         </Routes>
       </Router>
     </ThemeProvider>
