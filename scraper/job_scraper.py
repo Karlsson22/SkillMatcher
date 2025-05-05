@@ -11,10 +11,23 @@ from datetime import datetime, timedelta
 from urllib.parse import urljoin
 
 class JobScraper:
-    def __init__(self, max_jobs=5):
+    def __init__(self, max_jobs=5, days_back=None):
         self.jobs = []
         self.max_jobs = max_jobs
+        self.days_back = days_back
         self.job_dates = {}  # Store dates from sitemap
+
+    def is_within_date_range(self, date_str):
+        """Check if the job posting date is within the specified range"""
+        if self.days_back is None:
+            return True
+            
+        try:
+            job_date = datetime.strptime(date_str, '%Y-%m-%d')
+            cutoff_date = datetime.now() - timedelta(days=self.days_back)
+            return job_date >= cutoff_date
+        except (ValueError, TypeError):
+            return True  # If we can't parse the date, include the job
 
     def get_dates_from_sitemap(self):
         """Get job posting dates from the sitemap"""
@@ -69,6 +82,10 @@ class JobScraper:
                             upload_date_elem = job_page.query_selector("div.c-jalXcY.c-jalXcY-jroWjL-align-center.c-jalXcY-cxMxEp-gap-2:nth-child(2) span.c-fbRPId.c-fbRPId-fkodZJ-size-3.c-fbRPId-eqqxgc-weight-bold")
                             if upload_date_elem:
                                 upload_date = upload_date_elem.inner_text().strip()
+                                # Skip if not within date range
+                                if not self.is_within_date_range(upload_date):
+                                    job_page.close()
+                                    continue
                             else:
                                 upload_date = "N/A"
                             
@@ -422,12 +439,13 @@ def main():
     parser.add_argument('--location', type=str, required=True, help='Location to search in')
     parser.add_argument('--output', type=str, default='jobs.json', help='Output JSON file name')
     parser.add_argument('--max-jobs', type=int, default=3, help='Maximum number of jobs to scrape (default: 3)')
+    parser.add_argument('--days-back', type=int, help='Only include jobs posted within this many days')
     parser.add_argument('--source', type=str, choices=['jobbsafari', 'demando', 'utvecklarjobb', 'all'], 
                       default='all', help='Which source to scrape from')
     args = parser.parse_args()
 
     print(f"Starting job scrape for keyword: {args.keyword} and location: {args.location}")
-    scraper = JobScraper(max_jobs=args.max_jobs)
+    scraper = JobScraper(max_jobs=args.max_jobs, days_back=args.days_back)
     
     if args.source in ['jobbsafari', 'all']:
         print("Scraping Jobbsafari...")
