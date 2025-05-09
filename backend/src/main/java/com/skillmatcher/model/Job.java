@@ -47,6 +47,9 @@ public class Job {
     @Column(name = "max_years_required")
     private Integer maxYearsRequired;
 
+    @Column(name = "deadline")
+    private String deadline;
+
     // Getters and setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -72,4 +75,6 @@ public class Job {
     public void setYearsOfExperience(List<Integer> yearsOfExperience) { this.yearsOfExperience = yearsOfExperience; }
     public Integer getMaxYearsRequired() { return maxYearsRequired; }
     public void setMaxYearsRequired(Integer maxYearsRequired) { this.maxYearsRequired = maxYearsRequired; }
+    public String getDeadline() { return deadline; }
+    public void setDeadline(String deadline) { this.deadline = deadline; }
 } 

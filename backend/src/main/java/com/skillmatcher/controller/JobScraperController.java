@@ -10,9 +10,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.io.File;
 import com.skillmatcher.service.JobTechService;
+import com.skillmatcher.service.JobService;
 import org.springframework.beans.factory.annotation.Autowired;
 import java.util.List;
 import com.skillmatcher.model.JobTechJob;
+import com.skillmatcher.model.Job;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
+import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/api/jobs")
@@ -22,6 +27,11 @@ public class JobScraperController {
     
     @Autowired
     private JobTechService jobTechService;
+    
+    @Autowired
+    private JobService jobService;
+    
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @GetMapping("/scrape")
     public ResponseEntity<?> scrapeJobs(
@@ -119,6 +129,59 @@ public class JobScraperController {
             return ResponseEntity.ok(jobs);
         } catch (Exception e) {
             logger.error("Error fetching jobs from JobTech API", e);
+            return ResponseEntity.internalServerError().body("Error: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/analyze-and-save")
+    public ResponseEntity<?> analyzeAndSaveJobs(
+            @RequestParam String keyword,
+            @RequestParam String location,
+            @RequestParam(required = false) Integer maxJobs,
+            @RequestParam(required = false) Integer daysBack) {
+        try {
+            // First scrape the jobs
+            ResponseEntity<?> scrapeResponse = scrapeJobs(keyword, location, maxJobs, daysBack);
+            if (!scrapeResponse.getStatusCode().is2xxSuccessful()) {
+                return scrapeResponse;
+            }
+
+            // Parse the JSON response
+            String jsonContent = (String) scrapeResponse.getBody();
+            List<Map<String, Object>> jobsData = objectMapper.readValue(jsonContent, List.class);
+
+            // Convert and save each job
+            List<Job> savedJobs = new ArrayList<>();
+            for (Map<String, Object> jobData : jobsData) {
+                Job job = new Job();
+                job.setTitle((String) jobData.get("title"));
+                job.setCompany((String) jobData.get("company"));
+                job.setLocation((String) jobData.get("location"));
+                job.setUrl((String) jobData.get("url"));
+                job.setDescription((String) jobData.get("description"));
+                job.setSource((String) jobData.get("source"));
+                
+                // Set dates
+                String uploadDate = (String) jobData.get("upload_date");
+                if (uploadDate != null && !uploadDate.equals("N/A") && uploadDate.matches("\\d{4}-\\d{2}-\\d{2}")) {
+                    job.setPostedDate(LocalDateTime.parse(uploadDate + "T00:00:00"));
+                }
+                job.setScrapedDate(LocalDateTime.now());
+
+                // Set deadline if present
+                String deadline = (String) jobData.get("deadline");
+                if (deadline != null && !deadline.equals("N/A")) {
+                    job.setDeadline(deadline);
+                }
+
+                // Save the job (this will trigger analysis)
+                savedJobs.add(jobService.saveJob(job));
+                logger.info("Saved and analyzed job: {}", job.getTitle());
+            }
+
+            return ResponseEntity.ok(savedJobs);
+        } catch (Exception e) {
+            logger.error("Error analyzing and saving jobs", e);
             return ResponseEntity.internalServerError().body("Error: " + e.getMessage());
         }
     }
