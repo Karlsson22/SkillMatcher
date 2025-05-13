@@ -158,7 +158,7 @@ public class JobScraperController {
                 job.setCompany((String) jobData.get("company"));
                 job.setLocation((String) jobData.get("location"));
                 job.setUrl((String) jobData.get("url"));
-                job.setDescription((String) jobData.get("description"));
+                job.setDescription(normalizeDescription((String) jobData.get("description")));
                 job.setSource((String) jobData.get("source"));
                 
                 // Set dates
@@ -182,6 +182,23 @@ public class JobScraperController {
             return ResponseEntity.ok(savedJobs);
         } catch (Exception e) {
             logger.error("Error analyzing and saving jobs", e);
+            return ResponseEntity.internalServerError().body("Error: " + e.getMessage());
+        }
+    }
+
+    private String normalizeDescription(String description) {
+        if (description == null) return null;
+        String normalized = description.replace("\r\n", "\n").replace("\r", "\n");
+        return normalized.trim();
+    }
+
+    @GetMapping("/all")
+    public ResponseEntity<?> getAllJobs() {
+        try {
+            List<Job> jobs = jobService.getAllJobs();
+            return ResponseEntity.ok(jobs);
+        } catch (Exception e) {
+            logger.error("Error fetching all jobs", e);
             return ResponseEntity.internalServerError().body("Error: " + e.getMessage());
         }
     }

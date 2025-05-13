@@ -49,6 +49,33 @@ class JobScraper:
         except Exception as e:
             print(f"Error fetching sitemap: {e}")
 
+    def clean_description(self, text):
+        """Clean and format the job description text"""
+        if not text or text == "N/A":
+            return "N/A"
+            
+        # Remove HTML tags
+        text = re.sub(r'<[^>]+>', '', text)
+        
+        # Replace multiple newlines with a single newline
+        text = re.sub(r'\n\s*\n', '\n\n', text)
+        
+        # Replace multiple spaces with a single space
+        text = re.sub(r' +', ' ', text)
+        
+        # Clean up whitespace around newlines
+        text = re.sub(r'\n\s+', '\n', text)
+        text = re.sub(r'\s+\n', '\n', text)
+        
+        # Remove leading/trailing whitespace
+        text = text.strip()
+        
+        # If the text is too short after cleaning, return N/A
+        if len(text) < 20:
+            return "N/A"
+            
+        return text
+
     def scrape_jobbsafari(self, keyword, location):
         try:
             with sync_playwright() as p:
@@ -127,7 +154,7 @@ class JobScraper:
                                 if description == "N/A" or len(description) < 20:
                                     description = desc_heading.inner_text().strip()
                                 # Clean up any HTML tags if present
-                                description = re.sub(r'<[^>]+>', '', description).strip()
+                                description = self.clean_description(description)
                             
                             job_page.close()
                         else:
@@ -235,8 +262,9 @@ class JobScraper:
                                 for selector in selectors:
                                     description_elem = job_page.query_selector(selector)
                                     if description_elem:
-                                        description = description_elem.inner_text().strip()
-                                        if description and len(description) > 20:
+                                        raw_description = description_elem.inner_text().strip()
+                                        description = self.clean_description(raw_description)
+                                        if description != "N/A":
                                             print(f"Found description using selector: {selector}")
                                             break
                                 
