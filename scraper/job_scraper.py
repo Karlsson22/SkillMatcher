@@ -144,7 +144,7 @@ class JobScraper:
                                         if full_text and len(full_text) > 20:
                                             description = full_text
                                 # Fallback: try to get a main content section
-                                if (description == "N/A" or len(description) < 20):
+                                if description == "N/A" or len(description) < 20:
                                     main_content = job_page.query_selector("main")
                                     if main_content:
                                         main_text = main_content.inner_text().strip()

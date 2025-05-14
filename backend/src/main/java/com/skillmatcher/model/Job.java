@@ -36,7 +36,7 @@ public class Job {
     private LocalDateTime scrapedDate;
     
     @Enumerated(EnumType.STRING)
-    @Column(name = "experience_level")
+    @Column(name = "experience_level", columnDefinition = "varchar(20) CHECK (experience_level IN ('NOT_SPECIFIED', 'JUNIOR', 'MID_LEVEL', 'SENIOR'))")
     private ExperienceLevel experienceLevel;
     
     @ElementCollection
