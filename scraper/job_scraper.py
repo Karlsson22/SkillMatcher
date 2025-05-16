@@ -127,34 +127,71 @@ class JobScraper:
                             desc_heading = job_page.query_selector("text=Om jobbet")
                             description = "N/A"
                             if desc_heading:
-                                # Try to get the next sibling element after the heading
-                                next_sibling = desc_heading.evaluate_handle("node => node.nextElementSibling")
-                                if next_sibling:
-                                    sibling_text = next_sibling.inner_text().strip()
-                                    if sibling_text and len(sibling_text) > 20:
-                                        description = sibling_text
-                                # If not, try to get the parent and all text under it
+                                # Collect all sibling elements after the heading
+                                description_parts = []
+                                sibling = desc_heading.evaluate_handle("node => node.nextElementSibling")
+                                while sibling:
+                                    try:
+                                        text = sibling.inner_text().strip()
+                                        # Stop if we hit another heading or section (heuristic: empty or very short text, or contains 'Ansök'/'Bevaka')
+                                        if not text or len(text) < 3 or any(h in text.lower() for h in ["ansök", "bevaka", "din kompetens", "position description"]):
+                                            break
+                                        description_parts.append(text)
+                                        # Move to the next sibling
+                                        next_sibling = sibling.evaluate_handle("node => node.nextElementSibling")
+                                        if next_sibling:
+                                            sibling = next_sibling
+                                        else:
+                                            break
+                                    except Exception:
+                                        break
+                                if description_parts:
+                                    description = "\n\n".join(description_parts)
+                                else:
+                                    # fallback to previous logic
+                                    next_sibling = desc_heading.evaluate_handle("node => node.nextElementSibling")
+                                    if next_sibling:
+                                        sibling_text = next_sibling.inner_text().strip()
+                                        if sibling_text and len(sibling_text) > 20:
+                                            description = sibling_text
+                                    if description == "N/A" or len(description) < 20:
+                                        parent = desc_heading.evaluate_handle("node => node.parentElement")
+                                        if parent:
+                                            full_text = parent.inner_text()
+                                            if full_text.startswith("Om jobbet"):
+                                                full_text = full_text[len("Om jobbet"):].strip()
+                                            if full_text and len(full_text) > 20:
+                                                description = full_text
+                                # --- Enhanced fallback logic ---
                                 if description == "N/A" or len(description) < 20:
-                                    parent = desc_heading.evaluate_handle("node => node.parentElement")
-                                    if parent:
-                                        full_text = parent.inner_text()
-                                        # Remove the heading itself if present
-                                        if full_text.startswith("Om jobbet"):
-                                            full_text = full_text[len("Om jobbet"):].strip()
-                                        if full_text and len(full_text) > 20:
-                                            description = full_text
-                                # Fallback: try to get a main content section
-                                if description == "N/A" or len(description) < 20:
+                                    # Try main content
                                     main_content = job_page.query_selector("main")
                                     if main_content:
                                         main_text = main_content.inner_text().strip()
                                         if main_text and len(main_text) > 20:
                                             description = main_text
-                                # Final fallback: just get the text after the heading
                                 if description == "N/A" or len(description) < 20:
-                                    description = desc_heading.inner_text().strip()
-                                # Clean up any HTML tags if present
-                                description = self.clean_description(description)
+                                    # Try article tag
+                                    article = job_page.query_selector("article")
+                                    if article:
+                                        article_text = article.inner_text().strip()
+                                        if article_text and len(article_text) > 20:
+                                            description = article_text
+                                if description == "N/A" or len(description) < 20:
+                                    # Try a generic large description div
+                                    desc_div = job_page.query_selector("div[class*='description'], div[class*='content']")
+                                    if desc_div:
+                                        div_text = desc_div.inner_text().strip()
+                                        if div_text and len(div_text) > 20:
+                                            description = div_text
+                                if description == "N/A" or len(description) < 20:
+                                    # As a last resort, get all visible text from the body
+                                    body = job_page.query_selector("body")
+                                    if body:
+                                        body_text = body.inner_text().strip()
+                                        if body_text and len(body_text) > 20:
+                                            description = body_text
+                            description = self.clean_description(description)
                             
                             job_page.close()
                         else:
