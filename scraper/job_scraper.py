@@ -127,16 +127,20 @@ class JobScraper:
                             desc_heading = job_page.query_selector("text=Om jobbet")
                             description = "N/A"
                             if desc_heading:
-                                # Collect all sibling elements after the heading
+                                # Collect all sibling elements after the heading (improved conservative logic)
                                 description_parts = []
                                 sibling = desc_heading.evaluate_handle("node => node.nextElementSibling")
                                 while sibling:
                                     try:
                                         text = sibling.inner_text().strip()
-                                        # Stop if we hit another heading or section (heuristic: empty or very short text, or contains 'Ansök'/'Bevaka')
-                                        if not text or len(text) < 3 or any(h in text.lower() for h in ["ansök", "bevaka", "din kompetens", "position description"]):
+                                        # Only break on very clear section breaks (application buttons/links)
+                                        if any(h in text.lower() for h in [
+                                            "ansök", "bevaka liknande jobb", "tillbaka till toppen", "skicka ansökan", "sök jobbet"
+                                        ]):
                                             break
-                                        description_parts.append(text)
+                                        # Ignore empty text, but do not break
+                                        if text:
+                                            description_parts.append(text)
                                         # Move to the next sibling
                                         next_sibling = sibling.evaluate_handle("node => node.nextElementSibling")
                                         if next_sibling:
@@ -148,28 +152,32 @@ class JobScraper:
                                 if description_parts:
                                     description = "\n\n".join(description_parts)
                                 else:
-                                    # fallback to previous logic
-                                    next_sibling = desc_heading.evaluate_handle("node => node.nextElementSibling")
-                                    if next_sibling:
-                                        sibling_text = next_sibling.inner_text().strip()
-                                        if sibling_text and len(sibling_text) > 20:
-                                            description = sibling_text
-                                    if description == "N/A" or len(description) < 20:
-                                        parent = desc_heading.evaluate_handle("node => node.parentElement")
-                                        if parent:
-                                            full_text = parent.inner_text()
-                                            if full_text.startswith("Om jobbet"):
-                                                full_text = full_text[len("Om jobbet"):].strip()
-                                            if full_text and len(full_text) > 20:
-                                                description = full_text
-                                # --- Enhanced fallback logic ---
-                                if description == "N/A" or len(description) < 20:
-                                    # Try main content
+                                    # --- Improved extraction: Prefer full main content if it is long enough ---
                                     main_content = job_page.query_selector("main")
                                     if main_content:
                                         main_text = main_content.inner_text().strip()
-                                        if main_text and len(main_text) > 20:
+                                        # Use the main content if it's long enough (e.g., > 200 chars)
+                                        if len(main_text) > 200:
                                             description = main_text
+                                    # Fallback to previous logic if main content is missing or too short
+                                    if description == "N/A" or len(description) < 20:
+                                        if description_parts:
+                                            description = "\n\n".join(description_parts)
+                                        else:
+                                            next_sibling = desc_heading.evaluate_handle("node => node.nextElementSibling")
+                                            if next_sibling:
+                                                sibling_text = next_sibling.inner_text().strip()
+                                                if sibling_text and len(sibling_text) > 20:
+                                                    description = sibling_text
+                                            if description == "N/A" or len(description) < 20:
+                                                parent = desc_heading.evaluate_handle("node => node.parentElement")
+                                                if parent:
+                                                    full_text = parent.inner_text()
+                                                    if full_text.startswith("Om jobbet"):
+                                                        full_text = full_text[len("Om jobbet"):].strip()
+                                                    if full_text and len(full_text) > 20:
+                                                        description = full_text
+                                # --- Enhanced fallback logic ---
                                 if description == "N/A" or len(description) < 20:
                                     # Try article tag
                                     article = job_page.query_selector("article")
