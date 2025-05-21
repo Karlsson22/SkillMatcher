@@ -58,6 +58,16 @@ const JobList = () => {
                   <Typography variant="subtitle2" color="textSecondary" gutterBottom>
                     Location: {job.location}
                   </Typography>
+                  {job.deadline && (
+                    <Typography variant="body2" color="textSecondary">
+                      Deadline: {job.deadline}
+                    </Typography>
+                  )}
+                  {job.maxYearsRequired !== undefined && job.maxYearsRequired !== null && (
+                    <Typography variant="body2" color="textSecondary">
+                      Years of Experience Required: {job.maxYearsRequired}
+                    </Typography>
+                  )}
                   <Typography variant="body2" sx={{ whiteSpace: 'pre-line', mb: 1 }}>
                     {job.description}
                   </Typography>

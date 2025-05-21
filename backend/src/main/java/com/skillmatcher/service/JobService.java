@@ -7,6 +7,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Map;
+import org.jsoup.Jsoup;
+import org.jsoup.parser.Parser;
 
 @Service
 public class JobService {
@@ -20,6 +22,8 @@ public class JobService {
     }
 
     public Job saveJob(Job job) {
+        // Sanitize the job description to remove HTML tags
+        job.setDescription(stripHtmlTags(job.getDescription()));
         // Analyze the job before saving
         Map<String, Object> analysis = jobAnalyzerService.analyzeJob(job.getTitle(), job.getDescription());
         
@@ -29,6 +33,19 @@ public class JobService {
         job.setMaxYearsRequired((Integer) analysis.get("minYearsRequired"));
         
         return jobRepository.save(job);
+    }
+
+    // Utility method to robustly strip HTML tags from a string using jsoup, handling double-encoded HTML
+    private String stripHtmlTags(String input) {
+        if (input == null) return null;
+        String unescaped = Parser.unescapeEntities(input, true);
+        String prev;
+        String current = unescaped;
+        do {
+            prev = current;
+            current = Jsoup.parse(prev).text().trim();
+        } while (!current.equals(prev) && current.matches(".*<[^>]+>.*"));
+        return current;
     }
 
     public List<Job> getAllJobs() {
