@@ -25,6 +25,7 @@ const JobList = () => {
   const [selectedLocations, setSelectedLocations] = useState([]);
   const [minYears, setMinYears] = useState('');
   const [maxYears, setMaxYears] = useState('');
+  const [searchTitle, setSearchTitle] = useState('');
 
   useEffect(() => {
     const fetchJobs = async () => {
@@ -48,7 +49,9 @@ const JobList = () => {
     const years = job.maxYearsRequired ?? 0;
     const minOk = minYears === '' || years >= Number(minYears);
     const maxOk = maxYears === '' || years <= Number(maxYears);
-    return locationMatch && minOk && maxOk;
+    // Title search filter
+    const titleMatch = job.title.toLowerCase().includes(searchTitle.toLowerCase());
+    return locationMatch && minOk && maxOk && titleMatch;
   });
 
   return (
@@ -58,6 +61,13 @@ const JobList = () => {
       </Typography>
       {/* Filter Controls */}
       <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+        {/* Title Search */}
+        <TextField
+          label="Search Title"
+          value={searchTitle}
+          onChange={e => setSearchTitle(e.target.value)}
+          sx={{ width: 220 }}
+        />
         {/* Location Multi-select */}
         <FormControl sx={{ minWidth: 200 }}>
           <InputLabel>Location</InputLabel>
