@@ -8,6 +8,13 @@ import {
   Grid,
   CircularProgress,
   Chip,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Checkbox,
+  ListItemText,
+  TextField,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import axios from 'axios';
@@ -15,6 +22,9 @@ import axios from 'axios';
 const JobList = () => {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedLocations, setSelectedLocations] = useState([]);
+  const [minYears, setMinYears] = useState('');
+  const [maxYears, setMaxYears] = useState('');
 
   useEffect(() => {
     const fetchJobs = async () => {
@@ -29,16 +39,64 @@ const JobList = () => {
     fetchJobs();
   }, []);
 
+  const uniqueLocations = Array.from(new Set(jobs.map(job => job.location).filter(Boolean)));
+
+  const filteredJobs = jobs.filter(job => {
+    // Location filter
+    const locationMatch = selectedLocations.length === 0 || selectedLocations.includes(job.location);
+    // Years of experience filter
+    const years = job.maxYearsRequired ?? 0;
+    const minOk = minYears === '' || years >= Number(minYears);
+    const maxOk = maxYears === '' || years <= Number(maxYears);
+    return locationMatch && minOk && maxOk;
+  });
+
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>
         Job Listings
       </Typography>
+      {/* Filter Controls */}
+      <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+        {/* Location Multi-select */}
+        <FormControl sx={{ minWidth: 200 }}>
+          <InputLabel>Location</InputLabel>
+          <Select
+            multiple
+            value={selectedLocations}
+            onChange={e => setSelectedLocations(e.target.value)}
+            label="Location"
+            renderValue={selected => selected.join(', ')}
+          >
+            {uniqueLocations.map(loc => (
+              <MenuItem key={loc} value={loc}>
+                <Checkbox checked={selectedLocations.indexOf(loc) > -1} />
+                <ListItemText primary={loc} />
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        {/* Years of Experience Filter */}
+        <TextField
+          label="Min Years"
+          type="number"
+          value={minYears}
+          onChange={e => setMinYears(e.target.value)}
+          sx={{ width: 120 }}
+        />
+        <TextField
+          label="Max Years"
+          type="number"
+          value={maxYears}
+          onChange={e => setMaxYears(e.target.value)}
+          sx={{ width: 120 }}
+        />
+      </Box>
       {loading ? (
         <CircularProgress />
       ) : (
         <Grid container spacing={2}>
-          {jobs.map((job) => (
+          {filteredJobs.map((job) => (
             <Grid item xs={12} md={8} key={job.id}>
               <Accordion>
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
