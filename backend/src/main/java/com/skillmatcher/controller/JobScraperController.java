@@ -150,33 +150,65 @@ public class JobScraperController {
             String jsonContent = (String) scrapeResponse.getBody();
             List<Map<String, Object>> jobsData = objectMapper.readValue(jsonContent, List.class);
 
-            // Convert and save each job
+            // Convert and save each job (scraped)
             List<Job> savedJobs = new ArrayList<>();
             for (Map<String, Object> jobData : jobsData) {
                 Job job = new Job();
                 job.setTitle((String) jobData.get("title"));
                 job.setCompany((String) jobData.get("company"));
-                job.setLocation((String) jobData.get("location"));
+                // Handle location with validation
+                String jobLocation = (String) jobData.get("location");
+                if (jobLocation == null || jobLocation.trim().isEmpty()) {
+                    jobLocation = location; // Use the search location as fallback
+                }
+                job.setLocation(jobLocation);
                 job.setUrl((String) jobData.get("url"));
                 job.setDescription(normalizeDescription((String) jobData.get("description")));
                 job.setSource((String) jobData.get("source"));
-                
                 // Set dates
                 String uploadDate = (String) jobData.get("upload_date");
                 if (uploadDate != null && !uploadDate.equals("N/A") && uploadDate.matches("\\d{4}-\\d{2}-\\d{2}")) {
                     job.setPostedDate(LocalDateTime.parse(uploadDate + "T00:00:00"));
                 }
                 job.setScrapedDate(LocalDateTime.now());
-
                 // Set deadline if present
                 String deadline = (String) jobData.get("deadline");
                 if (deadline != null && !deadline.equals("N/A")) {
                     job.setDeadline(deadline);
                 }
-
                 // Save the job (this will trigger analysis)
                 savedJobs.add(jobService.saveJob(job));
                 logger.info("Saved and analyzed job: {}", job.getTitle());
+            }
+
+            // --- Fetch and save JobTech API jobs ---
+            List<JobTechJob> jobTechJobs = jobTechService.searchJobs(keyword, location);
+            for (JobTechJob jt : jobTechJobs) {
+                Job job = new Job();
+                job.setTitle(jt.getHeadline());
+                job.setCompany(jt.getEmployer());
+                // Handle location with validation
+                String jobLocation = jt.getLocation();
+                if (jobLocation == null || jobLocation.trim().isEmpty()) {
+                    jobLocation = location; // Use the search location as fallback
+                }
+                job.setLocation(jobLocation);
+                job.setUrl(jt.getUrl());
+                job.setDescription(normalizeDescription(jt.getDescription()));
+                job.setSource("JobTechAPI");
+                // Set dates
+                String pubDate = jt.getPublicationDate();
+                if (pubDate != null && pubDate.matches("\\d{4}-\\d{2}-\\d{2}")) {
+                    job.setPostedDate(LocalDateTime.parse(pubDate + "T00:00:00"));
+                }
+                job.setScrapedDate(LocalDateTime.now());
+                // Set deadline if present
+                String deadline = jt.getApplicationDeadline();
+                if (deadline != null && !deadline.equals("N/A")) {
+                    job.setDeadline(deadline);
+                }
+                savedJobs.add(jobService.saveJob(job));
+                logger.info("Saved and analyzed JobTech job: {}", job.getTitle());
             }
 
             return ResponseEntity.ok(savedJobs);

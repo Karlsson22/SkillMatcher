@@ -70,10 +70,21 @@ public class JobTechService {
                             }
                             
                             // Handle location information
-                            JsonNode workplaceNode = hit.get("workplace");
-                            if (workplaceNode != null && workplaceNode.has("municipality")) {
-                                job.setLocation(workplaceNode.get("municipality").asText());
+                            String jobLocation = null;
+                            JsonNode workplaceAddressNode = hit.get("workplace_address");
+                            if (workplaceAddressNode != null) {
+                                if (workplaceAddressNode.has("city") && !workplaceAddressNode.get("city").isNull()) {
+                                    jobLocation = workplaceAddressNode.get("city").asText();
+                                } else if (workplaceAddressNode.has("municipality") && !workplaceAddressNode.get("municipality").isNull()) {
+                                    jobLocation = workplaceAddressNode.get("municipality").asText();
+                                } else if (workplaceAddressNode.has("region") && !workplaceAddressNode.get("region").isNull()) {
+                                    jobLocation = workplaceAddressNode.get("region").asText();
+                                }
                             }
+                            if (jobLocation == null && hit.has("workplace") && hit.get("workplace").has("municipality")) {
+                                jobLocation = hit.get("workplace").get("municipality").asText();
+                            }
+                            job.setLocation(jobLocation);
                             
                             // Set the URL
                             if (job.getId() != null) {
