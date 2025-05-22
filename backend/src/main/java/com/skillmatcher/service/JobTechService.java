@@ -45,91 +45,58 @@ public class JobTechService {
             // Make the API call
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
             
-            // Log the raw response for debugging
-            logger.info("Raw API Response: {}", response.getBody());
-            
             // Parse the response
             List<JobTechJob> jobs = new ArrayList<>();
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 JsonNode rootNode = objectMapper.readTree(response.getBody());
-                logger.info("Parsed root node: {}", rootNode.toString());
-                
                 JsonNode hitsNode = rootNode.get("hits");
-                logger.info("Hits node: {}", hitsNode != null ? hitsNode.toString() : "null");
-                
                 if (hitsNode != null && hitsNode.isArray()) {
                     int jobsAdded = 0;
                     for (JsonNode hit : hitsNode) {
                         if (jobsAdded >= this.maxJobsPerSource) {
-                            logger.info("Reached maximum number of jobs for JobTech source");
                             break;
                         }
-                        try {
-                            JobTechJob job = new JobTechJob();
-                            
-                            // Map the fields from the API response to our JobTechJob object
-                            if (hit.has("id")) job.setId(hit.get("id").asText());
-                            if (hit.has("headline")) job.setHeadline(hit.get("headline").asText());
-                            
-                            // Get description from the description.text field
-                            JsonNode descriptionNode = hit.get("description");
-                            if (descriptionNode != null && descriptionNode.has("text")) {
-                                job.setDescription(descriptionNode.get("text").asText());
-                            }
-                            
-                            // Handle employer information
-                            JsonNode employerNode = hit.get("employer");
-                            if (employerNode != null && employerNode.has("name")) {
-                                job.setEmployer(employerNode.get("name").asText());
-                            }
-                            
-                            // Handle location information
-                            String jobLocation = null;
-                            JsonNode workplaceAddressNode = hit.get("workplace_address");
-                            if (workplaceAddressNode != null) {
-                                if (workplaceAddressNode.has("city") && !workplaceAddressNode.get("city").isNull()) {
-                                    jobLocation = workplaceAddressNode.get("city").asText();
-                                } else if (workplaceAddressNode.has("municipality") && !workplaceAddressNode.get("municipality").isNull()) {
-                                    jobLocation = workplaceAddressNode.get("municipality").asText();
-                                } else if (workplaceAddressNode.has("region") && !workplaceAddressNode.get("region").isNull()) {
-                                    jobLocation = workplaceAddressNode.get("region").asText();
-                                }
-                            }
-                            if (jobLocation == null && hit.has("workplace") && hit.get("workplace").has("municipality")) {
-                                jobLocation = hit.get("workplace").get("municipality").asText();
-                            }
-                            job.setLocation(jobLocation);
-                            
-                            // Set the URL
-                            if (job.getId() != null) {
-                                job.setUrl("https://arbetsformedlingen.se/platsbanken/annonser/" + job.getId());
-                            }
-                            
-                            // Handle dates
-                            if (hit.has("publication_date")) {
-                                job.setPublicationDate(hit.get("publication_date").asText());
-                            }
-                            if (hit.has("application_deadline")) {
-                                job.setApplicationDeadline(hit.get("application_deadline").asText());
-                            }
-                            
-                            jobs.add(job);
-                            jobsAdded++;
-                            logger.info("Added job {}/{}: {}", jobsAdded, this.maxJobsPerSource, job.getHeadline());
-                        } catch (Exception e) {
-                            logger.error("Error processing job: {}", e.getMessage());
+                        JobTechJob job = new JobTechJob();
+                        if (hit.has("id")) job.setId(hit.get("id").asText());
+                        if (hit.has("headline")) job.setHeadline(hit.get("headline").asText());
+                        JsonNode descriptionNode = hit.get("description");
+                        if (descriptionNode != null && descriptionNode.has("text")) {
+                            job.setDescription(descriptionNode.get("text").asText());
                         }
+                        JsonNode employerNode = hit.get("employer");
+                        if (employerNode != null && employerNode.has("name")) {
+                            job.setEmployer(employerNode.get("name").asText());
+                        }
+                        String jobLocation = null;
+                        JsonNode workplaceAddressNode = hit.get("workplace_address");
+                        if (workplaceAddressNode != null) {
+                            if (workplaceAddressNode.has("city") && !workplaceAddressNode.get("city").isNull()) {
+                                jobLocation = workplaceAddressNode.get("city").asText();
+                            } else if (workplaceAddressNode.has("municipality") && !workplaceAddressNode.get("municipality").isNull()) {
+                                jobLocation = workplaceAddressNode.get("municipality").asText();
+                            } else if (workplaceAddressNode.has("region") && !workplaceAddressNode.get("region").isNull()) {
+                                jobLocation = workplaceAddressNode.get("region").asText();
+                            }
+                        }
+                        if (jobLocation == null && hit.has("workplace") && hit.get("workplace").has("municipality")) {
+                            jobLocation = hit.get("workplace").get("municipality").asText();
+                        }
+                        job.setLocation(jobLocation);
+                        if (job.getId() != null) {
+                            job.setUrl("https://arbetsformedlingen.se/platsbanken/annonser/" + job.getId());
+                        }
+                        if (hit.has("publication_date")) {
+                            job.setPublicationDate(hit.get("publication_date").asText());
+                        }
+                        if (hit.has("application_deadline")) {
+                            job.setApplicationDeadline(hit.get("application_deadline").asText());
+                        }
+                        jobs.add(job);
+                        jobsAdded++;
                     }
-                } else {
-                    logger.warn("No hits found in the response or hits is not an array");
                 }
-            } else {
-                logger.warn("API call was not successful. Status code: {}", response.getStatusCode());
             }
-
-            // Save to JSON file
             saveToJsonFile(jobs);
-
             return jobs;
         } catch (Exception e) {
             logger.error("Error fetching jobs from JobTech API: {}", e.getMessage(), e);
