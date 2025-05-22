@@ -43,6 +43,11 @@ public class JobScraperController {
             logger.info("Starting job scrape for keyword: {} and location: {} with maxJobs: {} and daysBack: {}", 
                 keyword, location, maxJobs, daysBack);
             
+            // Set the max jobs per source for JobTech service
+            if (maxJobs != null) {
+                jobTechService.setMaxJobsPerSource(maxJobs);
+            }
+            
             // Use absolute path to the scraper directory
             String scraperPath = "C:\\Users\\defau\\Cursor_Projekts\\SkillMatcher\\scraper\\job_scraper.py";
             
@@ -122,9 +127,17 @@ public class JobScraperController {
     @GetMapping("/jobtech")
     public ResponseEntity<?> getJobTechJobs(
             @RequestParam String keyword,
-            @RequestParam String location) {
+            @RequestParam String location,
+            @RequestParam(required = false) Integer maxJobs) {
         try {
-            logger.info("Fetching jobs from JobTech API for keyword: {} and location: {}", keyword, location);
+            logger.info("Fetching jobs from JobTech API for keyword: {} and location: {} with maxJobs: {}", 
+                keyword, location, maxJobs);
+            
+            // Set the max jobs per source for JobTech service
+            if (maxJobs != null) {
+                jobTechService.setMaxJobsPerSource(maxJobs);
+            }
+            
             List<JobTechJob> jobs = jobTechService.searchJobs(keyword, location);
             return ResponseEntity.ok(jobs);
         } catch (Exception e) {
@@ -140,6 +153,16 @@ public class JobScraperController {
             @RequestParam(required = false) Integer maxJobs,
             @RequestParam(required = false) Integer daysBack) {
         try {
+            logger.info("Starting job analysis and save for keyword: {} and location: {} with maxJobs: {} and daysBack: {}", 
+                keyword, location, maxJobs, daysBack);
+            
+            List<Job> savedJobs = new ArrayList<>();
+            
+            // Set the max jobs per source for JobTech service
+            if (maxJobs != null) {
+                jobTechService.setMaxJobsPerSource(maxJobs);
+            }
+            
             // First scrape the jobs
             ResponseEntity<?> scrapeResponse = scrapeJobs(keyword, location, maxJobs, daysBack);
             if (!scrapeResponse.getStatusCode().is2xxSuccessful()) {
@@ -151,7 +174,6 @@ public class JobScraperController {
             List<Map<String, Object>> jobsData = objectMapper.readValue(jsonContent, List.class);
 
             // Convert and save each job (scraped)
-            List<Job> savedJobs = new ArrayList<>();
             for (Map<String, Object> jobData : jobsData) {
                 Job job = new Job();
                 job.setTitle((String) jobData.get("title"));
@@ -195,7 +217,7 @@ public class JobScraperController {
                 job.setLocation(jobLocation);
                 job.setUrl(jt.getUrl());
                 job.setDescription(normalizeDescription(jt.getDescription()));
-                job.setSource("JobTechAPI");
+                job.setSource("Arbetsformedlingen");
                 // Set dates
                 String pubDate = jt.getPublicationDate();
                 if (pubDate != null && pubDate.matches("\\d{4}-\\d{2}-\\d{2}")) {

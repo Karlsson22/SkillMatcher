@@ -16,6 +16,28 @@ class JobScraper:
         self.max_jobs = max_jobs
         self.days_back = days_back
         self.job_dates = {}  # Store dates from sitemap
+        self.jobs_scraped = 0  # Track total number of jobs scraped
+        self.sources = ['jobbsafari', 'demando', 'utvecklarjobb']  # List of available sources
+        jobs_per_source = max_jobs // 3
+        remainder = max_jobs % 3
+        # Assign the remainder to Ledigajobb (utvecklarjobb)
+        self.jobs_per_source = {
+            'jobbsafari': jobs_per_source,
+            'demando': jobs_per_source,
+            'utvecklarjobb': jobs_per_source + remainder
+        }
+
+    def can_scrape_more(self):
+        """Check if we can scrape more jobs based on the total limit"""
+        return self.jobs_scraped < self.max_jobs
+
+    def add_job(self, job_data):
+        """Add a job if we haven't reached the total limit"""
+        if self.can_scrape_more():
+            self.jobs.append(job_data)
+            self.jobs_scraped += 1
+            return True
+        return False
 
     def is_within_date_range(self, date_str):
         """Check if the job posting date is within the specified range"""
@@ -78,21 +100,25 @@ class JobScraper:
 
     def scrape_jobbsafari(self, keyword, location):
         try:
+            if not self.can_scrape_more():
+                print("Reached maximum number of jobs, skipping Jobbsafari")
+                return
+
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 page = browser.new_page()
-                # Build the correct search URL
                 url = f"https://jobbsafari.se/lediga-jobb?sok={keyword}&sok={keyword}%2C+{location}"
                 print(f"Navigating to: {url}")
                 page.goto(url)
                 time.sleep(3)  # Let the page load
 
-                # Find job cards
                 job_cards = page.query_selector_all("li.c-iSYTDB")
                 print(f"Found {len(job_cards)} job listings")
-                job_cards = job_cards[:self.max_jobs]
+                job_cards = job_cards[:self.jobs_per_source['jobbsafari']]
 
                 for card in job_cards:
+                    if not self.can_scrape_more():
+                        break
                     try:
                         # Get the job URL
                         job_link = card.query_selector("a.c-PJLV")
@@ -168,7 +194,8 @@ class JobScraper:
                             "deadline": deadline,
                             "source": "Jobbsafari",
                         }
-                        self.jobs.append(job_data)
+                        if not self.add_job(job_data):
+                            break
                         print(f"Scraped: {title} at {company}")
                     except Exception as e:
                         print(f"Error scraping job: {e}")
@@ -181,7 +208,10 @@ class JobScraper:
 
     def scrape_demando(self, keyword, location):
         try:
-            # First get dates from sitemap
+            if not self.can_scrape_more():
+                print("Reached maximum number of jobs, skipping Demando")
+                return
+
             print("Fetching dates from sitemap...")
             self.get_dates_from_sitemap()
             
@@ -193,7 +223,6 @@ class JobScraper:
                 page.goto(url)
                 time.sleep(3)  # Let the page load
                 
-                # Find job cards
                 job_cards = page.query_selector_all("a.flex.w-96")
                 print(f"Found {len(job_cards)} job listings")
                 
@@ -201,9 +230,11 @@ class JobScraper:
                     job_cards = page.query_selector_all("a[class*='flex'][href*='/company/']")
                     print(f"Found {len(job_cards)} job listings with alternative selector")
                 
-                job_cards = job_cards[:self.max_jobs]
+                job_cards = job_cards[:self.jobs_per_source['demando']]
 
                 for card in job_cards:
+                    if not self.can_scrape_more():
+                        break
                     try:
                         job_url = card.get_attribute("href")
                         if job_url:
@@ -348,7 +379,8 @@ class JobScraper:
                             "deadline": "N/A",  # Demando doesn't show deadlines
                             "source": "Demando",
                         }
-                        self.jobs.append(job_data)
+                        if not self.add_job(job_data):
+                            break
                         print(f"Scraped: {title} at {company}")
                     except Exception as e:
                         print(f"Error scraping job: {e}")
@@ -361,24 +393,25 @@ class JobScraper:
 
     def scrape_utvecklarjobb(self, keyword, location):
         try:
+            if not self.can_scrape_more():
+                print("Reached maximum number of jobs, skipping UtvecklarJobb")
+                return
+
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 page = browser.new_page()
-                
-                # Go to main page first
                 base_url = "https://ledigajobb.se"
                 search_url = f"{base_url}/sok?s={keyword}&cs={location}"
                 print(f"Navigating to: {search_url}")
-                
                 page.goto(search_url)
                 time.sleep(3)  # Let the page load
-                
-                # Find all job listings using the correct selector
                 job_cards = page.query_selector_all("div.job-card")
                 print(f"Found {len(job_cards)} job listings")
-                
-                # Process each job listing
-                for i, card in enumerate(job_cards[:self.max_jobs]):
+                job_cards = job_cards[:self.jobs_per_source['utvecklarjobb']]
+
+                for card in job_cards:
+                    if not self.can_scrape_more():
+                        break
                     try:
                         # Get the job link and URL
                         job_link = card.query_selector("a.job-link")
@@ -451,8 +484,8 @@ class JobScraper:
                             "deadline": deadline,
                             "source": "Ledigajobb"
                         }
-                        
-                        self.jobs.append(job_data)
+                        if not self.add_job(job_data):
+                            break
                         print(f"Added job {len(self.jobs)}/{self.max_jobs}: {title} at {company}")
                         
                         job_page.close()

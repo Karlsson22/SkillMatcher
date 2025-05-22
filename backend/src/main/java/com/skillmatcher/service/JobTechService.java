@@ -18,20 +18,29 @@ public class JobTechService {
     private static final String JOBTECH_API_URL = "https://jobsearch.api.jobtechdev.se/search";
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
+    private int maxJobsPerSource;  // Number of jobs to fetch from this source
 
     public JobTechService() {
         this.restTemplate = new RestTemplate();
         this.objectMapper = new ObjectMapper();
     }
 
+    public void setMaxJobsPerSource(int totalJobs) {
+        // We have 3 sources: Jobbsafari, Demando, Ledigajobb (Python), and JobTechAPI (Java)
+        // Only Ledigajobb gets the remainder, so JobTechAPI should get totalJobs // 3
+        this.maxJobsPerSource = Math.max(1, totalJobs / 3);
+        logger.info("Set JobTech max jobs per source to: {}", this.maxJobsPerSource);
+    }
+
     public List<JobTechJob> searchJobs(String keyword, String location) {
         try {
-            // Build the API URL with query parameters
-            String url = String.format("%s?q=%s&limit=10&offset=0", 
+            // Build the API URL with query parameters, using maxJobsPerSource instead of hardcoded 10
+            String url = String.format("%s?q=%s&limit=%d&offset=0", 
                 JOBTECH_API_URL, 
-                keyword.replace(" ", "+"));
+                keyword.replace(" ", "+"),
+                this.maxJobsPerSource);
 
-            logger.info("Fetching jobs from JobTech API: {}", url);
+            logger.info("Fetching jobs from JobTech API: {} (limit: {})", url, this.maxJobsPerSource);
 
             // Make the API call
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
@@ -49,7 +58,12 @@ public class JobTechService {
                 logger.info("Hits node: {}", hitsNode != null ? hitsNode.toString() : "null");
                 
                 if (hitsNode != null && hitsNode.isArray()) {
+                    int jobsAdded = 0;
                     for (JsonNode hit : hitsNode) {
+                        if (jobsAdded >= this.maxJobsPerSource) {
+                            logger.info("Reached maximum number of jobs for JobTech source");
+                            break;
+                        }
                         try {
                             JobTechJob job = new JobTechJob();
                             
@@ -88,7 +102,7 @@ public class JobTechService {
                             
                             // Set the URL
                             if (job.getId() != null) {
-                                job.setUrl("https://jobsearch.api.jobtechdev.se/ad/" + job.getId());
+                                job.setUrl("https://arbetsformedlingen.se/platsbanken/annonser/" + job.getId());
                             }
                             
                             // Handle dates
@@ -100,7 +114,8 @@ public class JobTechService {
                             }
                             
                             jobs.add(job);
-                            logger.info("Added job: {}", job.getHeadline());
+                            jobsAdded++;
+                            logger.info("Added job {}/{}: {}", jobsAdded, this.maxJobsPerSource, job.getHeadline());
                         } catch (Exception e) {
                             logger.error("Error processing job: {}", e.getMessage());
                         }
