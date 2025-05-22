@@ -15,10 +15,28 @@ class JobScraper:
         self.jobs = []
         self.max_jobs = max_jobs
         self.days_back = days_back
-        self.job_dates = {}  # Store dates from sitemap
+        self.job_dates = {}
+        self.jobs_scraped = 0
+        self.sources = ['jobbsafari', 'demando', 'utvecklarjobb']
+        jobs_per_source = max_jobs // 3
+        remainder = max_jobs % 3
+        self.jobs_per_source = {
+            'jobbsafari': jobs_per_source,
+            'demando': jobs_per_source,
+            'utvecklarjobb': jobs_per_source + remainder
+        }
+
+    def can_scrape_more(self):
+        return self.jobs_scraped < self.max_jobs
+
+    def add_job(self, job_data):
+        if self.can_scrape_more():
+            self.jobs.append(job_data)
+            self.jobs_scraped += 1
+            return True
+        return False
 
     def is_within_date_range(self, date_str):
-        """Check if the job posting date is within the specified range"""
         if self.days_back is None:
             return True
             
@@ -27,22 +45,18 @@ class JobScraper:
             cutoff_date = datetime.now() - timedelta(days=self.days_back)
             return job_date >= cutoff_date
         except (ValueError, TypeError):
-            return True  # If we can't parse the date, include the job
+            return True
 
     def get_dates_from_sitemap(self):
-        """Get job posting dates from the sitemap"""
         try:
             response = requests.get('https://demando.io/sitemap/jobs-sitemap.xml')
             if response.status_code == 200:
                 root = ElementTree.fromstring(response.content)
-                # Define the XML namespace
                 ns = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
-                # Get all URL elements
                 for url in root.findall('.//ns:url', ns):
                     loc = url.find('ns:loc', ns).text
                     lastmod = url.find('ns:lastmod', ns)
                     if lastmod is not None:
-                        # Convert date to a more readable format
                         date = datetime.fromisoformat(lastmod.text.replace('Z', '+00:00'))
                         formatted_date = date.strftime('%Y-%m-%d')
                         self.job_dates[loc] = formatted_date
@@ -50,27 +64,20 @@ class JobScraper:
             print(f"Error fetching sitemap: {e}")
 
     def clean_description(self, text):
-        """Clean and format the job description text"""
         if not text or text == "N/A":
             return "N/A"
             
-        # Remove HTML tags
         text = re.sub(r'<[^>]+>', '', text)
         
-        # Replace multiple newlines with a single newline
         text = re.sub(r'\n\s*\n', '\n\n', text)
         
-        # Replace multiple spaces with a single space
         text = re.sub(r' +', ' ', text)
         
-        # Clean up whitespace around newlines
         text = re.sub(r'\n\s+', '\n', text)
         text = re.sub(r'\s+\n', '\n', text)
         
-        # Remove leading/trailing whitespace
         text = text.strip()
         
-        # If the text is too short after cleaning, return N/A
         if len(text) < 20:
             return "N/A"
             
@@ -78,119 +85,68 @@ class JobScraper:
 
     def scrape_jobbsafari(self, keyword, location):
         try:
+            if not self.can_scrape_more():
+                print("Reached maximum number of jobs, skipping Jobbsafari")
+                return
+
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 page = browser.new_page()
-                # Build the correct search URL
                 url = f"https://jobbsafari.se/lediga-jobb?sok={keyword}&sok={keyword}%2C+{location}"
                 print(f"Navigating to: {url}")
                 page.goto(url)
-                time.sleep(3)  # Let the page load
+                time.sleep(3)
 
-                # Find job cards
                 job_cards = page.query_selector_all("li.c-iSYTDB")
                 print(f"Found {len(job_cards)} job listings")
-                job_cards = job_cards[:self.max_jobs]
+                job_cards = job_cards[:self.jobs_per_source['jobbsafari']]
 
                 for card in job_cards:
+                    if not self.can_scrape_more():
+                        break
                     try:
-                        # Get the job URL
                         job_link = card.query_selector("a.c-PJLV")
                         job_url = job_link.get_attribute("href") if job_link else "N/A"
                         if job_url != "N/A":
                             job_url = f"https://jobbsafari.se{job_url}"
                             
-                            # Visit the job posting page to get description, upload date, and deadline
                             job_page = browser.new_page()
                             job_page.goto(job_url)
-                            time.sleep(2)  # Let the page load
+                            time.sleep(2)
                             
-                            # Get the upload date
+                            desc_elem = job_page.query_selector("script[type='application/ld+json']")
+                            description = "N/A"
+                            if desc_elem:
+                                try:
+                                    data = json.loads(desc_elem.inner_text())
+                                    description_html = data.get("description", "")
+                                    description = re.sub(r'<br ?/?>', '\n', description_html)
+                                    description = re.sub(r'<[^>]+>', '', description)
+                                    description = description.strip()
+                                except Exception as e:
+                                    description = "N/A"
+                            if not description or description == "N/A" or len(description) < 20:
+                                main_content = job_page.query_selector("main")
+                                if main_content:
+                                    description = main_content.inner_text().strip()
+                                else:
+                                    description = "N/A"
+                            
                             upload_date_elem = job_page.query_selector("div.c-jalXcY.c-jalXcY-jroWjL-align-center.c-jalXcY-cxMxEp-gap-2:nth-child(2) span.c-fbRPId.c-fbRPId-fkodZJ-size-3.c-fbRPId-eqqxgc-weight-bold")
                             if upload_date_elem:
                                 upload_date = upload_date_elem.inner_text().strip()
-                                # Skip if not within date range
                                 if not self.is_within_date_range(upload_date):
                                     job_page.close()
                                     continue
                             else:
                                 upload_date = "N/A"
                             
-                            # Get the deadline
                             deadline_elem = job_page.query_selector("div.c-jalXcY.c-jalXcY-jroWjL-align-center.c-jalXcY-cxMxEp-gap-2:nth-child(3) span.c-fbRPId.c-fbRPId-fkodZJ-size-3.c-fbRPId-eqqxgc-weight-bold")
                             if deadline_elem:
                                 deadline = deadline_elem.inner_text().strip()
                             else:
                                 deadline = "N/A"
                             
-                            # Get the job description (all text under 'Om jobbet')
-                            desc_heading = job_page.query_selector("text=Om jobbet")
-                            description = "N/A"
-                            if desc_heading:
-                                # Collect all sibling elements after the heading
-                                description_parts = []
-                                sibling = desc_heading.evaluate_handle("node => node.nextElementSibling")
-                                while sibling:
-                                    try:
-                                        text = sibling.inner_text().strip()
-                                        # Stop if we hit another heading or section (heuristic: empty or very short text, or contains 'Ansök'/'Bevaka')
-                                        if not text or len(text) < 3 or any(h in text.lower() for h in ["ansök", "bevaka", "din kompetens", "position description"]):
-                                            break
-                                        description_parts.append(text)
-                                        # Move to the next sibling
-                                        next_sibling = sibling.evaluate_handle("node => node.nextElementSibling")
-                                        if next_sibling:
-                                            sibling = next_sibling
-                                        else:
-                                            break
-                                    except Exception:
-                                        break
-                                if description_parts:
-                                    description = "\n\n".join(description_parts)
-                                else:
-                                    # fallback to previous logic
-                                    next_sibling = desc_heading.evaluate_handle("node => node.nextElementSibling")
-                                    if next_sibling:
-                                        sibling_text = next_sibling.inner_text().strip()
-                                        if sibling_text and len(sibling_text) > 20:
-                                            description = sibling_text
-                                    if description == "N/A" or len(description) < 20:
-                                        parent = desc_heading.evaluate_handle("node => node.parentElement")
-                                        if parent:
-                                            full_text = parent.inner_text()
-                                            if full_text.startswith("Om jobbet"):
-                                                full_text = full_text[len("Om jobbet"):].strip()
-                                            if full_text and len(full_text) > 20:
-                                                description = full_text
-                                # --- Enhanced fallback logic ---
-                                if description == "N/A" or len(description) < 20:
-                                    # Try main content
-                                    main_content = job_page.query_selector("main")
-                                    if main_content:
-                                        main_text = main_content.inner_text().strip()
-                                        if main_text and len(main_text) > 20:
-                                            description = main_text
-                                if description == "N/A" or len(description) < 20:
-                                    # Try article tag
-                                    article = job_page.query_selector("article")
-                                    if article:
-                                        article_text = article.inner_text().strip()
-                                        if article_text and len(article_text) > 20:
-                                            description = article_text
-                                if description == "N/A" or len(description) < 20:
-                                    # Try a generic large description div
-                                    desc_div = job_page.query_selector("div[class*='description'], div[class*='content']")
-                                    if desc_div:
-                                        div_text = desc_div.inner_text().strip()
-                                        if div_text and len(div_text) > 20:
-                                            description = div_text
-                                if description == "N/A" or len(description) < 20:
-                                    # As a last resort, get all visible text from the body
-                                    body = job_page.query_selector("body")
-                                    if body:
-                                        body_text = body.inner_text().strip()
-                                        if body_text and len(body_text) > 20:
-                                            description = body_text
                             description = self.clean_description(description)
                             
                             job_page.close()
@@ -216,7 +172,8 @@ class JobScraper:
                             "deadline": deadline,
                             "source": "Jobbsafari",
                         }
-                        self.jobs.append(job_data)
+                        if not self.add_job(job_data):
+                            break
                         print(f"Scraped: {title} at {company}")
                     except Exception as e:
                         print(f"Error scraping job: {e}")
@@ -229,7 +186,10 @@ class JobScraper:
 
     def scrape_demando(self, keyword, location):
         try:
-            # First get dates from sitemap
+            if not self.can_scrape_more():
+                print("Reached maximum number of jobs, skipping Demando")
+                return
+
             print("Fetching dates from sitemap...")
             self.get_dates_from_sitemap()
             
@@ -239,9 +199,8 @@ class JobScraper:
                 url = f"https://demando.io/jobs?q={keyword}&location={location}"
                 print(f"Navigating to: {url}")
                 page.goto(url)
-                time.sleep(3)  # Let the page load
+                time.sleep(3)
                 
-                # Find job cards
                 job_cards = page.query_selector_all("a.flex.w-96")
                 print(f"Found {len(job_cards)} job listings")
                 
@@ -249,19 +208,20 @@ class JobScraper:
                     job_cards = page.query_selector_all("a[class*='flex'][href*='/company/']")
                     print(f"Found {len(job_cards)} job listings with alternative selector")
                 
-                job_cards = job_cards[:self.max_jobs]
+                job_cards = job_cards[:self.jobs_per_source['demando']]
 
                 for card in job_cards:
+                    if not self.can_scrape_more():
+                        break
                     try:
                         job_url = card.get_attribute("href")
                         if job_url:
                             if not job_url.startswith("http"):
                                 job_url = f"https://demando.io{job_url}"
                             
-                            # Visit the job posting page
                             job_page = browser.new_page()
                             job_page.goto(job_url)
-                            time.sleep(3)  # Give more time to load
+                            time.sleep(3)
                             
                             print(f"Fetching description for: {job_url}")
                             
@@ -270,24 +230,20 @@ class JobScraper:
                             skills = []
                             
                             try:
-                                # Try to get skills first
                                 skills_containers = card.query_selector_all("div.flex")
                                 for container in skills_containers:
                                     text = container.inner_text().strip()
-                                    # Skills are usually shown as single words or short phrases
-                                    if len(text.split('\n')) > 1:  # Multiple items
+                                    if len(text.split('\n')) > 1:
                                         skills = [s.strip() for s in text.split('\n')]
                                         if any(s for s in skills if s in ["Go", "Java", "C#", "Javascript", "+"]): # Found skills section
                                             break
                                 
-                                # Check if the keyword is in the skills
                                 keyword_lower = keyword.lower()
                                 skills_lower = [s.lower() for s in skills]
                                 if keyword_lower not in skills_lower:
                                     print(f"Skipping job - {keyword} not found in skills: {skills}")
                                     return None
                                 
-                                # Get the job description from the main content
                                 selectors = [
                                     "main div[class*='prose']",
                                     "main div[class*='content']",
@@ -308,7 +264,6 @@ class JobScraper:
                                 if description == "N/A":
                                     print("Could not find description with any selector")
                                 
-                                # Try to get date from the page
                                 date_selectors = [
                                     'meta[property="article:published_time"]',
                                     'meta[name="date"]',
@@ -320,7 +275,6 @@ class JobScraper:
                                 for selector in date_selectors:
                                     date_elem = job_page.query_selector(selector)
                                     if date_elem:
-                                        # Try different attributes
                                         for attr in ['content', 'datetime', 'title']:
                                             date_str = date_elem.get_attribute(attr)
                                             if date_str:
@@ -339,30 +293,24 @@ class JobScraper:
                             finally:
                                 job_page.close()
                             
-                            # If we didn't find the required keyword in skills, skip this job
                             if keyword_lower not in skills_lower:
                                 continue
                         
-                        # Get title
                         title_elem = card.query_selector("h3")
                         title = title_elem.inner_text() if title_elem else "N/A"
                         
-                        # Get company name
                         company = "N/A"
                         if job_url:
                             company_match = re.search(r'/company/([^/]+)/', job_url)
                             if company_match:
                                 company = company_match.group(1).replace('-', ' ').title()
                         
-                        # Get location - look for text next to location icon or in a flex container
                         location_val = "N/A"
                         try:
-                            # Try to get just the location part
                             location_containers = card.query_selector_all("div.flex")
                             for container in location_containers:
                                 text = container.inner_text().strip()
                                 if any(city in text for city in ["Stockholm", "Göteborg", "Malmö"]):
-                                    # Try to get just the city name
                                     lines = text.split('\n')
                                     for line in lines:
                                         if any(city in line for city in ["Stockholm", "Göteborg", "Malmö"]):
@@ -372,10 +320,8 @@ class JobScraper:
                         except Exception as e:
                             print(f"Error getting location: {e}")
                         
-                        # Get upload date from sitemap
                         upload_date = self.job_dates.get(job_url, "N/A")
                         if upload_date == "N/A":
-                            # Try to get date from URL structure or page metadata
                             try:
                                 meta_date = job_page.query_selector('meta[property="article:published_time"]')
                                 if meta_date:
@@ -393,10 +339,11 @@ class JobScraper:
                             "url": job_url,
                             "description": description,
                             "upload_date": upload_date,
-                            "deadline": "N/A",  # Demando doesn't show deadlines
+                            "deadline": "N/A",
                             "source": "Demando",
                         }
-                        self.jobs.append(job_data)
+                        if not self.add_job(job_data):
+                            break
                         print(f"Scraped: {title} at {company}")
                     except Exception as e:
                         print(f"Error scraping job: {e}")
@@ -409,26 +356,26 @@ class JobScraper:
 
     def scrape_utvecklarjobb(self, keyword, location):
         try:
+            if not self.can_scrape_more():
+                print("Reached maximum number of jobs, skipping UtvecklarJobb")
+                return
+
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 page = browser.new_page()
-                
-                # Go to main page first
                 base_url = "https://ledigajobb.se"
                 search_url = f"{base_url}/sok?s={keyword}&cs={location}"
                 print(f"Navigating to: {search_url}")
-                
                 page.goto(search_url)
-                time.sleep(3)  # Let the page load
-                
-                # Find all job listings using the correct selector
+                time.sleep(3)
                 job_cards = page.query_selector_all("div.job-card")
                 print(f"Found {len(job_cards)} job listings")
-                
-                # Process each job listing
-                for i, card in enumerate(job_cards[:self.max_jobs]):
+                job_cards = job_cards[:self.jobs_per_source['utvecklarjobb']]
+
+                for card in job_cards:
+                    if not self.can_scrape_more():
+                        break
                     try:
-                        # Get the job link and URL
                         job_link = card.query_selector("a.job-link")
                         if not job_link:
                             continue
@@ -440,20 +387,16 @@ class JobScraper:
                             
                         print(f"\nProcessing job: {title}")
                         
-                        # Get company name
                         company_elem = card.query_selector("span.text-truncate-1")
                         company = company_elem.inner_text().strip() if company_elem else "N/A"
                         
-                        # Get location
                         location_elem = card.query_selector("a[href*='/lediga-jobb/']")
                         location_val = location_elem.inner_text().strip() if location_elem else location
                         
-                        # Visit the job page to get more details
                         job_page = browser.new_page()
                         job_page.goto(job_url)
                         time.sleep(2)
                         
-                        # Get description from the job page
                         description = "N/A"
                         desc_elem = job_page.query_selector("script[type='application/ld+json']")
                         if desc_elem:
@@ -463,11 +406,9 @@ class JobScraper:
                             except:
                                 pass
                         
-                        # Get upload date and deadline from the job page
                         upload_date = "N/A"
                         deadline = "N/A"
                         
-                        # Try to get date from JSON-LD
                         if desc_elem:
                             try:
                                 json_data = json.loads(desc_elem.inner_text())
@@ -480,7 +421,6 @@ class JobScraper:
                             except:
                                 pass
                         
-                        # If we couldn't get dates from JSON-LD, try to get them from the page
                         if upload_date == "N/A":
                             date_elem = job_page.query_selector("span.text-nowrap.text-gray-700")
                             if date_elem:
@@ -499,8 +439,8 @@ class JobScraper:
                             "deadline": deadline,
                             "source": "Ledigajobb"
                         }
-                        
-                        self.jobs.append(job_data)
+                        if not self.add_job(job_data):
+                            break
                         print(f"Added job {len(self.jobs)}/{self.max_jobs}: {title} at {company}")
                         
                         job_page.close()

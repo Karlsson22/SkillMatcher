@@ -7,6 +7,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Map;
+import org.jsoup.Jsoup;
+import org.jsoup.parser.Parser;
 
 @Service
 public class JobService {
@@ -20,15 +22,26 @@ public class JobService {
     }
 
     public Job saveJob(Job job) {
-        // Analyze the job before saving
+        job.setDescription(stripHtmlTags(job.getDescription()));
         Map<String, Object> analysis = jobAnalyzerService.analyzeJob(job.getTitle(), job.getDescription());
         
-        // Update job with analysis results
         job.setExperienceLevel((ExperienceLevel) analysis.get("experienceLevel"));
         job.setYearsOfExperience((List<Integer>) analysis.get("yearsOfExperience"));
         job.setMaxYearsRequired((Integer) analysis.get("minYearsRequired"));
         
         return jobRepository.save(job);
+    }
+
+    private String stripHtmlTags(String input) {
+        if (input == null) return null;
+        String unescaped = Parser.unescapeEntities(input, true);
+        String prev;
+        String current = unescaped;
+        do {
+            prev = current;
+            current = Jsoup.parse(prev).text().trim();
+        } while (!current.equals(prev) && current.matches(".*<[^>]+>.*"));
+        return current;
     }
 
     public List<Job> getAllJobs() {
