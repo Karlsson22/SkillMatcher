@@ -22,12 +22,9 @@ public class JobService {
     }
 
     public Job saveJob(Job job) {
-        // Sanitize the job description to remove HTML tags
         job.setDescription(stripHtmlTags(job.getDescription()));
-        // Analyze the job before saving
         Map<String, Object> analysis = jobAnalyzerService.analyzeJob(job.getTitle(), job.getDescription());
         
-        // Update job with analysis results
         job.setExperienceLevel((ExperienceLevel) analysis.get("experienceLevel"));
         job.setYearsOfExperience((List<Integer>) analysis.get("yearsOfExperience"));
         job.setMaxYearsRequired((Integer) analysis.get("minYearsRequired"));
@@ -35,7 +32,6 @@ public class JobService {
         return jobRepository.save(job);
     }
 
-    // Utility method to robustly strip HTML tags from a string using jsoup, handling double-encoded HTML
     private String stripHtmlTags(String input) {
         if (input == null) return null;
         String unescaped = Parser.unescapeEntities(input, true);

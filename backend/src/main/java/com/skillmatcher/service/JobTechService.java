@@ -18,7 +18,7 @@ public class JobTechService {
     private static final String JOBTECH_API_URL = "https://jobsearch.api.jobtechdev.se/search";
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
-    private int maxJobsPerSource;  // Number of jobs to fetch from this source
+    private int maxJobsPerSource;  
 
     public JobTechService() {
         this.restTemplate = new RestTemplate();
@@ -26,15 +26,12 @@ public class JobTechService {
     }
 
     public void setMaxJobsPerSource(int totalJobs) {
-        // We have 3 sources: Jobbsafari, Demando, Ledigajobb (Python), and JobTechAPI (Java)
-        // Only Ledigajobb gets the remainder, so JobTechAPI should get totalJobs // 3
         this.maxJobsPerSource = Math.max(1, totalJobs / 3);
         logger.info("Set JobTech max jobs per source to: {}", this.maxJobsPerSource);
     }
 
     public List<JobTechJob> searchJobs(String keyword, String location) {
         try {
-            // Build the API URL with query parameters, using maxJobsPerSource instead of hardcoded 10
             String url = String.format("%s?q=%s&limit=%d&offset=0", 
                 JOBTECH_API_URL, 
                 keyword.replace(" ", "+"),
@@ -42,10 +39,8 @@ public class JobTechService {
 
             logger.info("Fetching jobs from JobTech API: {} (limit: {})", url, this.maxJobsPerSource);
 
-            // Make the API call
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
             
-            // Parse the response
             List<JobTechJob> jobs = new ArrayList<>();
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 JsonNode rootNode = objectMapper.readTree(response.getBody());
@@ -106,11 +101,9 @@ public class JobTechService {
 
     private void saveToJsonFile(List<JobTechJob> newJobs) {
         try {
-            // Use absolute path to the scraper directory
             String scraperDir = "C:\\Users\\defau\\Cursor_Projekts\\SkillMatcher\\scraper";
             File outputFile = new File(scraperDir, "jobs.json");
             
-            // Read existing jobs if file exists
             List<JobTechJob> allJobs = new ArrayList<>();
             if (outputFile.exists()) {
                 try {
@@ -122,10 +115,8 @@ public class JobTechService {
                 }
             }
             
-            // Add new jobs
             allJobs.addAll(newJobs);
             
-            // Save all jobs back to file
             objectMapper.writeValue(outputFile, allJobs);
             logger.info("Saved total of {} jobs to {}", allJobs.size(), outputFile.getAbsolutePath());
         } catch (Exception e) {
