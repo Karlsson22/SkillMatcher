@@ -54,19 +54,47 @@ const JobList = () => {
   const [daysBack, setDaysBack] = useState(30);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [lastSearchTime, setLastSearchTime] = useState(null);
+  const [isPolling, setIsPolling] = useState(false);
+
+  const fetchJobs = async () => {
+    try {
+      const response = await axios.get('http://localhost:8080/api/jobs/all');
+      setJobs(response.data);
+    } catch (error) {
+      console.error('Failed to fetch jobs:', error);
+    }
+    setLoading(false);
+  };
 
   useEffect(() => {
-    const fetchJobs = async () => {
-      try {
-        const response = await axios.get('http://localhost:8080/api/jobs/all');
-        setJobs(response.data);
-      } catch (error) {
-        console.error('Failed to fetch jobs:', error);
-      }
-      setLoading(false);
-    };
     fetchJobs();
   }, []);
+
+  useEffect(() => {
+    let pollInterval;
+
+    if (isPolling && lastSearchTime) {
+      pollInterval = setInterval(async () => {
+        try {
+          const response = await axios.get('http://localhost:8080/api/jobs/all');
+          const newJobs = response.data;
+          
+          if (newJobs.length !== jobs.length) {
+            setJobs(newJobs);
+          }
+        } catch (error) {
+          console.error('Polling error:', error);
+        }
+      }, 10000);
+    }
+
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  }, [isPolling, lastSearchTime, jobs.length]);
 
   const handleSearch = async () => {
     setSearchLoading(true);
@@ -76,12 +104,21 @@ const JobList = () => {
       const response = await axios.post('http://localhost:8080/api/jobs/analyze-and-save', null, { params });
       setJobs(response.data);
       setSearchOpen(false);
+      setLastSearchTime(new Date());
+      setIsPolling(true);
     } catch (err) {
       setSearchError('Failed to fetch jobs. Please try again.');
       console.error('Error:', err);
+      setIsPolling(false);
     }
     setSearchLoading(false);
   };
+
+  useEffect(() => {
+    return () => {
+      setIsPolling(false);
+    };
+  }, []);
 
   const uniqueLocations = Array.from(new Set(jobs.map(job => job.location).filter(Boolean)));
 
@@ -209,7 +246,13 @@ const JobList = () => {
                     disabled={searchLoading || !keyword || !location}
                     sx={{ mt: { xs: 1, sm: 0 }, height: 48, fontWeight: 600, fontSize: 16 }}
                   >
-                    {searchLoading ? <CircularProgress size={24} /> : 'Search & Save'}
+                    {searchLoading ? (
+                      <CircularProgress size={24} />
+                    ) : isPolling ? (
+                      'Searching & Auto-Update Active'
+                    ) : (
+                      'Search & Save'
+                    )}
                   </Button>
                 </Grid>
                 {searchError && (
